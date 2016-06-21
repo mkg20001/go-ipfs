@@ -177,6 +177,12 @@
       "hash": "Qmb1DA2A9LS2wR4FFweB4uEDomFsdmnw1VLawLE1yQzudj",
       "name": "base32",
       "version": "0.0.0"
+	},
+	{
+      "author": "kubuxu",
+      "hash": "QmPZP5NhZSUPH1eYEaEEjZGrwy3fLPF9yDAN6h9zGAkXAk",
+      "name": "bbloom",
+      "version": "0.0.1"
     }
   ],
   "gxVersion": "0.4.0",

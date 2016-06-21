@@ -131,7 +131,8 @@ func setupNode(ctx context.Context, n *IpfsNode, cfg *BuildCfg) error {
 
 	var err error
 	bs := bstore.NewBlockstore(n.Repo.Datastore())
-	n.Blockstore, err = bstore.WriteCached(bs, kSizeBlockstoreWriteCache)
+	bsc := bstore.BloomCached(bs, 256*1024)
+	n.Blockstore, err = bstore.WriteCached(bsc, kSizeBlockstoreWriteCache)
 	if err != nil {
 		return err
 	}
