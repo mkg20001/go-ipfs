@@ -5,6 +5,7 @@ import (
 	key "github.com/ipfs/go-ipfs/blocks/key"
 	lru "gx/ipfs/QmVYxfoJQiZijTgPNHCHgHELvQpbsJNTg6Crmc3dQkj3yy/golang-lru"
 	bloom "gx/ipfs/QmWQ2SJisXwcCLsUXLwYCKSfyExXjFRW2WbBH5sqCUnwX5/bbloom"
+	ds "gx/ipfs/QmZ6A6P6AMo8SR3jXAwzTuSU6B9R2Y4eqW2yW9VvfUayDN/go-datastore"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 )
 
@@ -20,7 +21,7 @@ func BloomCached(bs Blockstore, bloomSize, lruSize int) (*bloomcache, error) {
 		return nil, err
 	}
 	bc := &bloomcache{blockstore: bs, bloom: bl, arc: arc}
-	bc.Invaludate()
+	bc.Invalidate()
 	go bc.Rebuild()
 
 	return bc, nil
@@ -34,9 +35,13 @@ type bloomcache struct {
 	// This chan is only used for testing to wait for bloom to enable
 	rebuildChan chan struct{}
 	blockstore  Blockstore
+
+	// Statistics
+	hits   uint64
+	misses uint64
 }
 
-func (b *bloomcache) Invaludate() {
+func (b *bloomcache) Invalidate() {
 	b.rebuildChan = make(chan struct{})
 	b.active = false
 }
@@ -62,34 +67,43 @@ func (b *bloomcache) Rebuild() {
 }
 
 func (b *bloomcache) DeleteBlock(k key.Key) error {
+	if has, ok := b.hasCached(k); ok && !has {
+		return ErrNotFound
+	}
+
 	err := b.blockstore.DeleteBlock(k)
 	if err == nil {
 		b.arc.Add(k, false)
+	} else if err == ds.ErrNotFound || err == ErrNotFound {
+		b.arc.Add(k, false)
+		return ErrNotFound
 	}
 	return err
 }
 
-// return true means that there for sure is no such object
-// return false means that there might be that object
-func (b *bloomcache) hasNot(k key.Key) bool {
+// if ok == false has is inconclusive
+// if ok == true then has respons to question: is it contained
+func (b *bloomcache) hasCached(k key.Key) (has bool, ok bool) {
 	if k == "" {
-		return true
+		return true, true
 	}
 	if b.active {
 		blr := b.bloom.HasTS([]byte(k))
-		if blr == false {
-			return true
+		if blr == false { // not contained in bloom is only conclusive answer bloom gives
+			return blr, true
 		}
 	}
-	return false
+	h, ok := b.arc.Get(k)
+	if ok {
+		return h.(bool), ok
+	} else {
+		return false, ok
+	}
 }
 
 func (b *bloomcache) Has(k key.Key) (bool, error) {
-	if b.hasNot(k) {
-		return false, nil
-	}
-	if has, hit := b.arc.Get(k); hit {
-		return has.(bool), nil
+	if has, ok := b.hasCached(k); ok {
+		return has, nil
 	}
 
 	res, err := b.blockstore.Has(k)
@@ -100,10 +114,7 @@ func (b *bloomcache) Has(k key.Key) (bool, error) {
 }
 
 func (b *bloomcache) Get(k key.Key) (blocks.Block, error) {
-	if b.hasNot(k) {
-		return nil, ErrNotFound
-	}
-	if has, hit := b.arc.Get(k); hit && !(has.(bool)) {
+	if has, ok := b.hasCached(k); ok && !has {
 		return nil, ErrNotFound
 	}
 
@@ -117,9 +128,10 @@ func (b *bloomcache) Get(k key.Key) (blocks.Block, error) {
 }
 
 func (b *bloomcache) Put(bl blocks.Block) error {
-	if has, hit := b.arc.Get(bl.Key()); hit && (has.(bool)) {
+	if has, ok := b.hasCached(bl.Key()); ok && has {
 		return nil
 	}
+
 	err := b.blockstore.Put(bl)
 	if err == nil {
 		b.bloom.AddTS([]byte(bl.Key()))
@@ -129,6 +141,12 @@ func (b *bloomcache) Put(bl blocks.Block) error {
 }
 
 func (b *bloomcache) PutMany(bs []blocks.Block) error {
+	var good []blocks.Block
+	for _, block := range bs {
+		if has, ok := b.hasCached(block.Key()); !ok || (ok && !has) {
+			good = append(good, block)
+		}
+	}
 	err := b.blockstore.PutMany(bs)
 	if err == nil {
 		for _, block := range bs {
