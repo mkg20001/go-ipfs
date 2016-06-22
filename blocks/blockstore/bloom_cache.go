@@ -58,6 +58,7 @@ func (b *bloomcache) Rebuild() {
 	ch, err := b.blockstore.AllKeysChan(ctx)
 	if err != nil {
 		log.Errorf("AllKeysChan failed in bloomcache rebuild with: %v", err)
+		return
 	}
 	for key := range ch {
 		b.bloom.AddTS([]byte(key)) // Use binary key, the more compact the better
