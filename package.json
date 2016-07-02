@@ -177,8 +177,8 @@
       "hash": "Qmb1DA2A9LS2wR4FFweB4uEDomFsdmnw1VLawLE1yQzudj",
       "name": "base32",
       "version": "0.0.0"
-	},
-	{
+    },
+    {
       "author": "kubuxu",
       "hash": "QmWQ2SJisXwcCLsUXLwYCKSfyExXjFRW2WbBH5sqCUnwX5",
       "name": "bbloom",
