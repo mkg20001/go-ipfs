@@ -72,6 +72,7 @@ func (b *bloomcache) DeleteBlock(k key.Key) error {
 		return ErrNotFound
 	}
 
+	b.arc.Remove(k) // Invalidate cache before deleting.
 	err := b.blockstore.DeleteBlock(k)
 	if err == nil {
 		b.arc.Add(k, false)
